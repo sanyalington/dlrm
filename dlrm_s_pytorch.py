@@ -676,16 +676,16 @@ if __name__ == "__main__":
     def dlrm_wrap(X, lS_o, lS_i, use_gpu, device):
         if use_gpu:  # .cuda()
             return dlrm(
-                X.to(device),
-                [S_o.to(device) for S_o in lS_o],
-                [S_i.to(device) for S_i in lS_i],
+                X.pin_memory().to(device,non_blocking=True),
+                [S_o.pin_memory().to(device,non_blocking=True) for S_o in lS_o],
+                [S_i.pin_memory().to(device,non_blocking=True) for S_i in lS_i],
             )
         else:
             return dlrm(X, lS_o, lS_i)
 
     def loss_fn_wrap(Z, T, use_gpu, device):
         if use_gpu:
-            return loss_fn(Z, T.to(device))
+            return loss_fn(Z, T.pin_memory().to(device,non_blocking=True))
         else:
             return loss_fn(Z, T)
 
@@ -736,7 +736,8 @@ if __name__ == "__main__":
         )
 
     print("time/loss/accuracy (if enabled):")
-    with torch.autograd.profiler.profile(args.enable_profiling, use_gpu) as prof:
+    #with torch.autograd.profiler.profile(args.enable_profiling, use_gpu) as prof:
+    if 1:
         while k < args.nepochs:
             j = 0
             while j < nbatches:
@@ -748,12 +749,6 @@ if __name__ == "__main__":
                 # loss
                 E = loss_fn_wrap(Z, lT[j], use_gpu, device)
 
-                # compute loss and accuracy
-                L = E.detach().cpu().numpy()  # numpy array
-                S = Z.detach().cpu().numpy()  # numpy array
-                T = lT[j].detach().cpu().numpy()  # numpy array
-                mbs = T.shape[0]  # = args.mini_batch_size except maybe for last
-                A = np.sum((np.round(S, 0) == T).astype(np.uint8)) / mbs
 
                 if not args.inference_only:
                     # scaled error gradient propagation
@@ -771,6 +766,12 @@ if __name__ == "__main__":
 
                 t2 = time_wrap(use_gpu)
                 total_time += t2 - t1
+                # compute loss and accuracy
+                L = E.detach().cpu().numpy()  # numpy array
+                S = Z.detach().cpu().numpy()  # numpy array
+                T = lT[j].detach().cpu().numpy()  # numpy array
+                mbs = T.shape[0]  # = args.mini_batch_size except maybe for last
+                A = np.sum((np.round(S, 0) == T).astype(np.uint8)) / mbs
                 total_accu += A
                 total_loss += L
                 total_iter += 1
